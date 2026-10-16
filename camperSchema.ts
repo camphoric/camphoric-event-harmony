@@ -1,5 +1,5 @@
-import { dates } from './dates.js';
-import pricing from './pricing/pricing.js';
+import { dates } from './dates.ts';
+import pricing from './pricing/pricing.ts';
 
 export const days = [0, 1, 2, 3, 4]
   .map((i) => dates.start.plus({days: i}).toFormat('EEE MMM d'));

@@ -1,6 +1,10 @@
 /* eslint-disable indent */
+import type { LodgingNode } from '../eventImportObjectSchema.ts';
 
-const cabinFactory = (parentKey, notes, capacity = 4, visible = false) => (acc, cbn) => {
+const cabinFactory = (parentKey: string, notes: string, capacity = 4, visible = false) => (
+  acc: Record<string, LodgingNode>,
+  cbn: number | string,
+) => {
   return {
     ...acc,
     [`c${cbn}`]: {

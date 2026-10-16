@@ -1,4 +1,4 @@
-import { yearDisplay } from './dates.js';
+import { yearDisplay } from './dates.ts';
 
 const subject = `Camp Harmony ${yearDisplay} Registration Confirmation`;
 // Jinja (SPEC §8.3): `campers`, `registration`, `pricing`, `invoice` and

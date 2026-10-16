@@ -1,4 +1,4 @@
-import { yearDisplay } from './dates.js';
+import { yearDisplay } from './dates.ts';
 
 // Jinja markdown, rendered on the server when registration completes (SPEC §7.3):
 // `registration`, `campers`, `pricing`, `invoice` and `event`.

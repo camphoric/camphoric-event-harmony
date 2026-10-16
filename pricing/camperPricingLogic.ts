@@ -1,7 +1,8 @@
-import pricingValues from './pricing.js';
-import { earlybirdCutoff } from '../dates.js';
+import type { LodgingLookup, PricingLogicItem } from '../../eventImportObjectSchema.ts';
+import pricingValues from './pricing.ts';
+import { earlybirdCutoff } from '../dates.ts';
 
-export const ageLookup = {
+export const ageLookup: Record<'adult' | 'yadult' | 'child' | 'baby', string[]> = {
   adult: ['31-79 years old', '80+ years old'],
   yadult: ['18-30 years old', '13-17 years old'],
   child: ['3-12 years old'],
@@ -33,8 +34,8 @@ const pricingKeys = Object.keys(pricingValues).filter(
   k => !pricingToExclude.includes(k)
 );
 
-const getRates = (lodgingIds, early) => ({
-  'if': pricingKeys.reduce((acc, key) => {
+const getRates = (lodgingIds: LodgingLookup, early: string) => ({
+  'if': pricingKeys.reduce<unknown[]>((acc, key) => {
     const [agek, lodgingk, , fullcampk] = key.split('_');
     let lodgingId;
 
@@ -50,7 +51,7 @@ const getRates = (lodgingIds, early) => ({
       {
         'and': [
           // age
-          { 'or': ageLookup[agek].map(a => (
+          { 'or': ageLookup[agek as keyof typeof ageLookup].map(a => (
             { '===': [a, camperAge] }
           )) },
 
@@ -74,7 +75,7 @@ const calculateCampership = {
   ],
 };
 
-const calculatePrivateRoom = (lodgingIds) => ({
+const calculatePrivateRoom = (lodgingIds: LodgingLookup) => ({
   'if': [
     // list of lodging that gets $0 rate for private rooms - this is
     // essentially ones that can't get a private room - which according to
@@ -83,7 +84,7 @@ const calculatePrivateRoom = (lodgingIds) => ({
     'cabin',
     'rv',
     'tent',
-  ].reduce(
+  ].reduce<unknown[]>(
     (acc, lodgingk) => {
       return [
         ...acc,
@@ -99,12 +100,12 @@ const calculatePrivateRoom = (lodgingIds) => ({
 });
 
 
-const calculateLinens = (lodgingIds) => ({
+const calculateLinens = (lodgingIds: LodgingLookup) => ({
   'if': [
     // list of lodging that gets $0 rate for linens
     'lodge',
     // 'apt',
-  ].reduce(
+  ].reduce<unknown[]>(
     (acc, lodgingk) => {
       return [
         ...acc,
@@ -119,7 +120,7 @@ const calculateLinens = (lodgingIds) => ({
   ]),
 });
 
-const rate = (lodgingIds) => ({
+const rate = (lodgingIds: LodgingLookup) => ({
   'if': [
     { '<': [{var: 'registration.created_at.epoch'}, cutoff] },
     getRates(lodgingIds, 'early'),
@@ -127,7 +128,7 @@ const rate = (lodgingIds) => ({
   ]
 });
 
-export default (lodgingIds) => [
+export default (lodgingIds: LodgingLookup): PricingLogicItem[] => [
   {
     var: 'rate',
     label: 'Lodging Rate Per Day',

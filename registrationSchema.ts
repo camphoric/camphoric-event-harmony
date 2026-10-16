@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import { dates, yearDisplay } from './dates.js';
+import { dates, yearDisplay } from './dates.ts';
 
 // luxon DATE_HUGE = Friday, October 14, 1983
 const start = dates.start.toLocaleString(DateTime.DATE_HUGE);

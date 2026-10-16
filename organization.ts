@@ -1,3 +1,5 @@
+import type { OrganizationImport } from './index.ts';
+
 export default {
   organization: {
     name: 'SFFMC',
@@ -9,4 +11,4 @@ export default {
     username: process.env.CAMPHORIC_LTA_GMAIL_USERNAME,
     password: process.env.CAMPHORIC_LTA_GMAIL_PASSWORD,
   },
-};
+} satisfies OrganizationImport;

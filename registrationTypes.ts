@@ -1,6 +1,11 @@
-import { yearDisplay } from './dates.js';
+import type { RegistrationType } from '../eventImportObjectSchema.ts';
 
-const emails = {
+// A registration type, before its invitation email is added
+type RegTypeBase = Omit<RegistrationType, 'invitation_email_subject' | 'invitation_email_template'>;
+
+import { yearDisplay } from './dates.ts';
+
+const emails: Record<string, (regType: RegTypeBase) => string> = {
   'late-registrant': () => `
 Dear {{ invitation.recipient_name or invitation.recipient_email }},
 
@@ -17,7 +22,7 @@ The Camp Harmony Registrar
 `,
 };
 
-const specialType = (regType) => ({
+const specialType = (regType: RegTypeBase): RegistrationType => ({
   ...regType,
   invitation_email_subject: `Register for ${regType.label}`,
   invitation_email_template:
