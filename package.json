@@ -1,6 +1,6 @@
 {
   "name": "@camphoric/camphoric-event-harmony",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "SFFMC's Camp Harmony Camphoric event: its import object, organization, reports and bulk registrations.",
   "license": "MIT",
   "repository": {
