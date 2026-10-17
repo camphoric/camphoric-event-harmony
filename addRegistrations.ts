@@ -1,4 +1,4 @@
-#!/usr/bin/env -S npx tsx --conditions=camphoric-source
+#!/usr/bin/env -S npx tsx
 
 /**
  * Add generated registrations to Camp Harmony
@@ -14,7 +14,7 @@
  * checks came in, about half are recorded as paid in full and a fifth as part
  * paid, leaving the rest with their whole balance due.
  *
- * The event must already exist (data/'s npm run import imports it). The script only
+ * The event must already exist (Camphoric's importer imports it). The script only
  * adds registrations — it never clears any — so each run adds another batch,
  * and re-running an interrupted run with the same SEED repeats the ones it
  * had already posted. Every registrant email ends in @dontsend.com, but each
@@ -36,21 +36,14 @@
  *
  * Running it
  * ----------
- * On the Vagrant VM (the repo is mounted at /vagrant; dev admin login is
- * admin/admin):
+ * From this repository, against a development Camphoric on port 8000 (its dev
+ * admin login is admin/admin):
  *
- *   vagrant ssh -c 'cd /vagrant/data && CAMPHORIC_URL=http://localhost:8000 \
+ *   CAMPHORIC_URL=http://localhost:8000 \
  *     DJANGO_SUPERUSER_USERNAME=admin DJANGO_SUPERUSER_PASSWORD=admin \
- *     COUNT=75 SEED=42 npm run bulk -w @camphoric/camphoric-event-harmony'
+ *     COUNT=75 SEED=42 npm run bulk
  *
- * In Docker (from the repo root, with the django service up; the data service
- * reaches it as http://django:8000 and gets the login from env/local/shared.env):
- *
- *   docker compose run --rm data npm run bulk -w @camphoric/camphoric-event-harmony
- *
- * See also the other events' addRegistrations.ts
- * (@camphoric/camphoric-event-lark, and camphoric/camphoric-event-ltacampout's); the shared
- * plumbing is in @camphoric/camphoric-event-import-tools/bulk-registrations.
+ * The shared plumbing is in @camphoric/camphoric-event-import-tools/bulk-registrations.
  */
 
 import { main, lastNames, type Gen, type LodgingChoice } from '@camphoric/camphoric-event-import-tools/bulk-registrations';

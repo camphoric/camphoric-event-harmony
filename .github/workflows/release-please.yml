@@ -1,0 +1,87 @@
+# On every push to main, release-please keeps a release PR up to date: the
+# version bump and CHANGELOG.md from the Conventional Commits since the last
+# release. Merging it tags vX.Y.Z, creates the GitHub Release, and publishes the
+# package to GitHub Packages (publish, below). See README.md.
+#
+# The publish job also runs on demand, to publish a released tag again (if it
+# failed): gh workflow run release-please.yml -f tag=v1.0.0
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to publish again (vX.Y.Z)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Uses release-please-config.json + .release-please-manifest.json.
+
+  publish:
+    needs: release-please
+    if: ${{ always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: '@camphoric'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Publish, unless that version is already published
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "package.json is version $version, not the tag's $TAG" >&2; exit 1
+          fi
+          if npm view "$name@$version" version > /dev/null 2>&1; then
+            echo "$name@$version is already published"; exit 0
+          fi
+          # Publishing an older release again mustn't move the latest dist-tag
+          # back. (prepack builds dist/.)
+          newest=$(npm view "$name" version 2>/dev/null || true)
+          older=$(node -e '
+            const [mine, theirs] = process.argv.slice(1).map(v => v.split(".").map(Number));
+            const i = theirs.findIndex((n, k) => n !== mine[k]);
+            console.log(i >= 0 && theirs[i] > mine[i] ? "yes" : "no");
+          ' "$version" "${newest:-0.0.0}")
+          if [ "$older" = yes ]; then
+            npm publish --tag "republished-$version"
+          else
+            npm publish
+          fi

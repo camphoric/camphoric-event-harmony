@@ -1,0 +1,60 @@
+# The registration form's end-to-end tests: a throwaway Camphoric (the release
+# image, latest unless a run picks another tag) with this event imported, and
+# the form driven in desktop and mobile Chrome. On PRs, weekly (so a Camphoric
+# release that changes the form shows up here), and on demand.
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 14 * * 1'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: The Camphoric image tag to test against (ghcr.io/camphoric/camphoric)
+        default: latest
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CAMPHORIC_IMAGE_TAG: ${{ inputs.image_tag || 'latest' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: '@camphoric'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the e2e tests
+        run: npm run e2e
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

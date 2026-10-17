@@ -1,9 +1,13 @@
 {
   "name": "@camphoric/camphoric-event-harmony",
   "version": "0.0.0",
-  "private": true,
-  "type": "module",
   "description": "SFFMC's Camp Harmony Camphoric event: its import object, organization, reports and bulk registrations.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/camphoric/camphoric-event-harmony.git"
+  },
+  "type": "module",
   "files": [
     "dist",
     "reports",
@@ -11,19 +15,22 @@
   ],
   "exports": {
     ".": {
-      "camphoric-source": "./index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "scripts": {
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit && eslint .",
-    "bulk": "tsx --conditions=camphoric-source addRegistrations.ts",
+    "bulk": "tsx addRegistrations.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "luxon": "^3.7.2"
@@ -32,10 +39,11 @@
     "@camphoric/camphoric-event-import-spec": "^1.0.0"
   },
   "devDependencies": {
-    "@camphoric/camphoric-event-import-spec": "*",
-    "@camphoric/camphoric-event-import-tools": "*",
+    "@camphoric/camphoric-event-import-spec": "^1.0.0",
+    "@camphoric/camphoric-event-import-tools": "^1.2.0",
     "@eslint/js": "^9.39.5",
     "@jest/globals": "^30.5.2",
+    "@playwright/test": "^1.63.0",
     "@swc/core": "^1.16.13",
     "@swc/jest": "^0.2.39",
     "@types/luxon": "^3.7.6",
