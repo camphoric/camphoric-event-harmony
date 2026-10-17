@@ -4,8 +4,9 @@ import {
   type EventModule,
   type Override,
   type SampleRegGenerator,
-} from '../eventImportObjectSchema.ts';
+} from 'camphoric-event-import-spec';
 import camper_schema from './camperSchema.ts';
+import organization from './organization.ts';
 import confirmation_page_template from './confirmationPageTemplate.ts';
 import pre_submit_template from './preSubmitTemplate.ts';
 import pricing from './pricing/pricing.ts';
@@ -85,6 +86,7 @@ const sampleRegGenerator: SampleRegGenerator = async (_fetch, results) => {
 
 export default {
   data,
+  organization,
   sampleRegGenerator,
   overrides: [
     pricingOverride

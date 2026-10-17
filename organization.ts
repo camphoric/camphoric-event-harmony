@@ -1,4 +1,4 @@
-import type { OrganizationImport } from './index.ts';
+import type { OrganizationImport } from 'camphoric-event-import-spec';
 
 export default {
   organization: {

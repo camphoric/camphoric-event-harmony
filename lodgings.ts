@@ -1,5 +1,5 @@
 /* eslint-disable indent */
-import type { LodgingLookup, LodgingNode, Lodgings } from '../eventImportObjectSchema.ts';
+import type { LodgingLookup, LodgingNode, Lodgings } from 'camphoric-event-import-spec';
 
 const cabinFactory = (parentKey: string, notes: string, capacity = 4, visible = false) => (
   acc: Record<string, LodgingNode>,

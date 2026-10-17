@@ -1,4 +1,4 @@
-import type { LodgingLookup, PricingLogicItem } from '../../eventImportObjectSchema.ts';
+import type { LodgingLookup, PricingLogicItem } from 'camphoric-event-import-spec';
 import pricingValues from './pricing.ts';
 import { earlybirdCutoff } from '../dates.ts';
 

@@ -1,4 +1,4 @@
-import type { LodgingLookup, SampleRegistration } from '../eventImportObjectSchema.ts';
+import type { LodgingLookup, SampleRegistration } from 'camphoric-event-import-spec';
 import { ageLookup } from './pricing/camperPricingLogic.ts';
 import { days } from './camperSchema.ts';
 
