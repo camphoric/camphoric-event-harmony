@@ -1,10 +1,8 @@
 #!/bin/sh
 # Smoke-test the package as it's published: pack it (which builds it),
 # install the tarball into a fresh project (with the spec, its peer, from
-# GitHub Packages), and load it from its build with plain Node (no tsx, no
-# TypeScript source), checking what the Camphoric importer relies on.
-#
-# Needs a token for GitHub Packages (see README.md).
+# npm), and load it from its build with plain Node (no tsx, no TypeScript
+# source), checking what the Camphoric importer relies on.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -32,7 +30,6 @@ fi
 
 npm init -y > /dev/null
 npm pkg set type=module
-cp "$ROOT/.npmrc" .npmrc
 npm install --silent --no-audit --no-fund "$TARBALL"
 
 # The spec comes from its peer range, as the project's own copy

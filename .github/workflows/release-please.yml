@@ -1,7 +1,8 @@
 # On every push to main, release-please keeps a release PR up to date: the
 # version bump and CHANGELOG.md from the Conventional Commits since the last
 # release. Merging it tags vX.Y.Z, creates the GitHub Release, and publishes the
-# package to GitHub Packages (publish, below). See README.md.
+# package to npm (publish, below), with npm's trusted publishing (OIDC, no
+# stored token), which also attaches provenance. See README.md.
 #
 # The publish job also runs on demand, to publish a released tag again (if it
 # failed): gh workflow run release-please.yml -f tag=v1.0.0
@@ -20,7 +21,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  packages: write
+  # npm's trusted publishing
+  id-token: write
 
 concurrency:
   group: release-please
@@ -46,7 +48,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
-      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout the tagged commit
         uses: actions/checkout@v7
@@ -55,9 +56,9 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
-          registry-url: https://npm.pkg.github.com
-          scope: '@camphoric'
+          # trusted publishing needs npm 11.5.1 or later, which Node 22's npm isn't
+          node-version: 26
+          registry-url: https://registry.npmjs.org
           cache: npm
 
       - run: npm ci

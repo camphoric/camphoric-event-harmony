@@ -7,29 +7,13 @@ imported event.
 
 It satisfies the contract in
 [`@camphoric/camphoric-event-import-spec`](https://github.com/camphoric/camphoric/tree/main/data/packages/event-import-spec),
-and Camphoric's importer (`data/` in the Camphoric repository) installs it from GitHub Packages
-and imports it.
-
-## Installing from GitHub Packages
-
-The `@camphoric` packages are on GitHub Packages, which needs a token to install **even public
-packages**. This repository's `.npmrc` points the `@camphoric` scope there; give npm a token with
-the `read:packages` scope, never in a committed file:
-
-```bash
-gh auth refresh -s read:packages
-```
-
-```bash
-npm config set //npm.pkg.github.com/:_authToken "$(gh auth token)"
-```
-
-In GitHub Actions, the workflows use the job's own `GITHUB_TOKEN` (with `packages: read`).
+and Camphoric's importer (`data/` in the Camphoric repository) installs it from npm and
+imports it.
 
 ## Developing
 
 ```bash
-npm ci                          # install (needs the token above)
+npm ci                          # install
 npm test                        # unit tests, including the spec's conformance checks
 npm run typecheck
 npm run lint                    # type-check, then ESLint
@@ -88,14 +72,16 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/) (`fe
 release; `feat!:` is a major). On each push to `main`,
 [release-please](https://github.com/googleapis/release-please) keeps a release PR up to date
 with the version bump and `CHANGELOG.md`. Merging it tags `vX.Y.Z`, creates the GitHub Release,
-and publishes the package to GitHub Packages. To publish a released tag again, if that failed:
+and publishes the package to npm. To publish a released tag again, if that failed:
 
 ```bash
 gh workflow run release-please.yml -f tag=v1.0.0
 ```
 
-The repository publishes the package, so in the package's settings, under "Manage Actions
-access", this repository must keep the **Write** (or Admin) role.
+The package's settings on npmjs.com list this repository and `release-please.yml` as its GitHub
+Actions trusted publisher, allowed to `npm publish`. npm drops a trusted publisher that hasn't
+published within 2 days of being added; without a matching one, the publish fails with npm's 404
+or `ENEEDAUTH`.
 
 ## History
 
