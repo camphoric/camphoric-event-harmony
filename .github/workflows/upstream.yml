@@ -1,5 +1,5 @@
-# Test this event against the newest Camphoric release (once its image is
-# published) and the newest import-spec / import-tools versions in its ranges:
+# Test this event against the newest Camphoric release whose image is
+# published and the newest import-spec / import-tools versions in its ranges:
 # once per new combination, weekly regardless, and on demand. It calls ci.yml
 # and e2e.yml with those exact versions, and reports in a camphoric-compat
 # issue: a failure or a note opens it (or adds to it), unless its latest report
@@ -39,9 +39,9 @@ jobs:
       tools_version: ${{ steps.versions.outputs.tools_version }}
       notes: ${{ steps.versions.outputs.notes }}
       key: ${{ steps.versions.outputs.key }}
-      # Monday and forced runs always test (a missing image then fails e2e and
-      # is reported); a 6-hourly one waits for the image and skips a tested
-      # combination.
+      # Monday and forced runs always test (with no image found, against the
+      # newest release, which fails e2e and is reported); a 6-hourly one waits
+      # for an image and skips a tested combination.
       test: >-
         ${{ github.event.schedule == '0 14 * * 1' || inputs.force
         || (steps.versions.outputs.image_ready == 'true' && steps.tested.outputs.cache-hit != 'true') }}
@@ -75,47 +75,61 @@ jobs:
             # shellcheck disable=SC2086
             npx --yes semver@7 -r "$2" $versions | tail -n 1 || true
           }
-          # A note when package $1 has a version newer than the one tested ($2)
-          # outside this event's range ($3)
+          # A note when package $1's newest version ($3) isn't the one tested
+          # ($2): it's outside this event's range ($4)
           newer() {
-            local top
-            top=$(newest "$1" '*') || return
-            if [ -n "$top" ] && [ "$top" != "$2" ]; then
-              echo "- \`$1\` $top is published, outside this event's range (\`$3\`): this event needs migrating to it."
+            if [ -n "$3" ] && [ "$3" != "$2" ]; then
+              echo "- \`$1\` $3 is published, outside this event's range (\`$4\`): this event needs migrating to it."
             fi
           }
 
-          # The newest stable app release by version, not gh release view's
-          # Latest (a package release is briefly Latest, and the API doesn't
-          # list releases strictly by version)
+          # Stable app releases by version, newest first, not gh release
+          # view's Latest (a package release is briefly Latest, and the API
+          # doesn't list releases strictly by version)
           tags=$(gh api --paginate repos/camphoric/camphoric/releases \
             --jq '.[] | select((.prerelease or .draft) | not) | .tag_name')
-          image=$(echo "$tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          releases=$(echo "$tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV || true)
+          newest_release=$(echo "$releases" | head -n 1)
+          # A release is created before its image is pushed: test the newest
+          # release whose image is published, of the five newest. With none,
+          # the newest release, not ready (so not recorded as tested).
+          image=$newest_release
+          ready=false
+          for tag in $(echo "$releases" | head -n 5); do
+            if docker manifest inspect "ghcr.io/camphoric/camphoric:$tag" > /dev/null 2>&1; then
+              image=$tag
+              ready=true
+              break
+            fi
+          done
           spec_range=$(range "$spec_pkg")
           tools_range=$(range "$tools_pkg")
           spec=$(newest "$spec_pkg" "$spec_range")
           tools=$(newest "$tools_pkg" "$tools_range")
+          # The newest stable version of each, in this event's range or not
+          spec_top=$(newest "$spec_pkg" '*')
+          tools_top=$(newest "$tools_pkg" '*')
           if [ -z "$image" ] || [ -z "$spec" ] || [ -z "$tools" ]; then
             echo "couldn't find the versions to test (image '$image', spec '$spec', tools '$tools')" >&2
             exit 1
           fi
-          spec_note=$(newer "$spec_pkg" "$spec" "$spec_range")
-          tools_note=$(newer "$tools_pkg" "$tools" "$tools_range")
-          notes=$(printf '%s\n%s\n' "$spec_note" "$tools_note" | grep . || true)
-
-          # The release is created before its image is pushed
-          if docker manifest inspect "ghcr.io/camphoric/camphoric:$image" > /dev/null 2>&1; then
-            ready=true
-          else
-            ready=false
+          image_note=
+          if [ "$image" != "$newest_release" ] && [ "$ready" = true ]; then
+            image_note="- Camphoric \`$newest_release\` is released, but ghcr.io/camphoric/camphoric:$newest_release isn't published yet: this run tests \`$image\`, the newest release whose image is."
           fi
+          spec_note=$(newer "$spec_pkg" "$spec" "$spec_top" "$spec_range")
+          tools_note=$(newer "$tools_pkg" "$tools" "$tools_top" "$tools_range")
+          notes=$(printf '%s\n%s\n%s\n' "$image_note" "$spec_note" "$tools_note" | grep . || true)
+
           {
             echo '### Versions'
             echo
-            if [ "$ready" = true ]; then
-              echo "- Camphoric \`$image\`"
-            else
+            if [ "$ready" != true ]; then
               echo "- Camphoric \`$image\`: ghcr.io/camphoric/camphoric:$image isn't published yet"
+            elif [ "$image" != "$newest_release" ]; then
+              echo "- Camphoric \`$image\` (the newest release with a published image; \`$newest_release\`'s isn't yet)"
+            else
+              echo "- Camphoric \`$image\`"
             fi
             echo "- \`$spec_pkg\` $spec (range \`$spec_range\`)"
             echo "- \`$tools_pkg\` $tools (range \`$tools_range\`)"
@@ -126,7 +140,9 @@ jobs:
             echo "image_ready=$ready"
             echo "spec_version=$spec"
             echo "tools_version=$tools"
-            echo "key=camphoric-tested-$image-spec-$spec-tools-$tools"
+            # The versions tested, and the newest of each package: a new
+            # version outside this event's range is a new note, so a new key
+            echo "key=camphoric-tested-$image-spec-$spec-tools-$tools-newest-spec-$spec_top-tools-$tools_top"
             echo "notes<<NOTES_EOF"
             if [ -n "$notes" ]; then echo "$notes"; fi
             echo "NOTES_EOF"
@@ -225,10 +241,12 @@ jobs:
 
       # Pass or fail, the combination is tested: a failure is tracked by the
       # issue, not retried every 6 hours. Saved after the report, so a report
-      # that failed is tried again by the next check, and not when the image
-      # wasn't published (a Monday or forced run), so the first check after it
-      # is published tests it. (On a Monday or forced run the key may exist
-      # already, which only logs a warning.)
+      # that failed is tried again by the next check, and not when no image
+      # was found (a Monday or forced run), so the first check after one is
+      # published tests it. The key names the release tested, so one tested
+      # in place of a newer release whose image wasn't published yet is tested
+      # again once it is. (On a Monday or forced run the key may exist already,
+      # which only logs a warning.)
       - if: ${{ needs.detect.outputs.image_ready == 'true' }}
         run: touch .camphoric-tested
 
