@@ -12,21 +12,21 @@ on:
   workflow_call:
     inputs:
       spec_version:
-        description: The @camphoric/camphoric-event-import-spec version to test (default the lockfile's)
+        description: An exact @camphoric/camphoric-event-import-spec version to test, in this event's range or not, such as a new major or 1.1.0-rc.1 (default the lockfile's)
         type: string
         default: ''
       tools_version:
-        description: The @camphoric/camphoric-event-import-tools version to test (default the lockfile's)
+        description: An exact @camphoric/camphoric-event-import-tools version to test, in this event's range or not, such as a new major or 1.3.0-rc.1 (default the lockfile's)
         type: string
         default: ''
   workflow_dispatch:
     inputs:
       spec_version:
-        description: The @camphoric/camphoric-event-import-spec version to test (default the lockfile's)
+        description: An exact @camphoric/camphoric-event-import-spec version to test, in this event's range or not, such as a new major or 1.1.0-rc.1 (default the lockfile's)
         type: string
         default: ''
       tools_version:
-        description: The @camphoric/camphoric-event-import-tools version to test (default the lockfile's)
+        description: An exact @camphoric/camphoric-event-import-tools version to test, in this event's range or not, such as a new major or 1.3.0-rc.1 (default the lockfile's)
         type: string
         default: ''
 
@@ -62,12 +62,30 @@ jobs:
           packages=()
           if [ -n "$SPEC" ]; then packages+=("@camphoric/camphoric-event-import-spec@$SPEC"); fi
           if [ -n "$TOOLS" ]; then packages+=("@camphoric/camphoric-event-import-tools@$TOOLS"); fi
-          npm install --no-save "${packages[@]}"
-          npm ls "${packages[@]}"   # fails unless exactly these versions are installed
+          # A version outside a peer range (a new major, a pre-release) can make
+          # npm refuse; then install it over the range
+          npm install --no-save "${packages[@]}" || {
+            echo "::warning::npm refused ${packages[*]}; installing again with --force, over the peer ranges"
+            npm install --no-save --force "${packages[@]}"
+          }
+          # Check each installed package's own version: npm ls fails on one
+          # outside this event's range, though it's installed
+          for package in "${packages[@]}"; do
+            name=${package%@*}
+            want=${package##*@}
+            have=$(node -p "require('./node_modules/' + process.argv[1] + '/package.json').version" "$name")
+            if [ "$have" != "$want" ]; then
+              echo "::error::$name $have is installed, not $want (give an exact version)"
+              exit 1
+            fi
+          done
           {
             echo '### Camphoric packages'
+            echo
+            echo '(`invalid` marks a version outside the range in `package.json`.)'
+            echo
             echo '```'
-            npm ls @camphoric/camphoric-event-import-spec @camphoric/camphoric-event-import-tools
+            npm ls @camphoric/camphoric-event-import-spec @camphoric/camphoric-event-import-tools || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -81,4 +99,6 @@ jobs:
         run: npx eslint .
 
       - name: The packed package works under plain Node
+        env:
+          SPEC_VERSION: ${{ inputs.spec_version }}  # its peer (default npm's newest in range)
         run: scripts/smoke-test-package.sh

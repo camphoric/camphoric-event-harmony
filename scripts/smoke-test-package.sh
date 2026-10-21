@@ -1,9 +1,13 @@
 #!/bin/sh
 # Smoke-test the package as it's published: pack it (which builds it),
 # install the tarball into a fresh project (with the spec, its peer, from
-# npm), and load it from its build with plain Node (no tsx, no TypeScript
-# source), checking what the Camphoric importer relies on.
+# npm: the newest in its range, or the exact version $SPEC_VERSION names),
+# and load it from its build with plain Node (no tsx, no TypeScript source),
+# checking what the Camphoric importer relies on.
+#
+#   SPEC_VERSION=1.0.0 scripts/smoke-test-package.sh
 set -eu
+SPEC=@camphoric/camphoric-event-import-spec
 
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
@@ -30,12 +34,26 @@ fi
 
 npm init -y > /dev/null
 npm pkg set type=module
-npm install --silent --no-audit --no-fund "$TARBALL"
+if [ -n "${SPEC_VERSION:-}" ]; then
+  # One outside the peer range (a new major, a pre-release) makes npm refuse;
+  # then install it over the range
+  npm install --silent --no-audit --no-fund "$TARBALL" "$SPEC@$SPEC_VERSION" || {
+    echo "npm refused $SPEC@$SPEC_VERSION; installing again with --force, over the peer range" >&2
+    npm install --no-audit --no-fund --force "$TARBALL" "$SPEC@$SPEC_VERSION"
+  }
+  INSTALLED=$(node -p "require('./node_modules/$SPEC/package.json').version")
+  if [ "$INSTALLED" != "$SPEC_VERSION" ]; then
+    echo "$SPEC $INSTALLED is installed, not $SPEC_VERSION (give an exact version)" >&2
+    exit 1
+  fi
+else
+  npm install --silent --no-audit --no-fund "$TARBALL"
+fi
 
-# The spec comes from its peer range, as the project's own copy
-node -e "assert.ok(require('$NAME/package.json').peerDependencies['@camphoric/camphoric-event-import-spec'])"
-test -d node_modules/@camphoric/camphoric-event-import-spec
-test ! -e "node_modules/$NAME/node_modules/@camphoric/camphoric-event-import-spec"
+# The spec is the project's own copy, as the package's peer
+node -e "assert.ok(require('$NAME/package.json').peerDependencies['$SPEC'])"
+test -d "node_modules/$SPEC"
+test ! -e "node_modules/$NAME/node_modules/$SPEC"
 if grep -q camphoric-source "node_modules/$NAME/package.json"; then
   echo "the published package.json names the in-repo camphoric-source export" >&2
   exit 1

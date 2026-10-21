@@ -70,19 +70,29 @@ demand.
 
 `.github/workflows/upstream.yml` ("Camphoric releases") tests this event against the newest
 Camphoric release and import packages, rather than the lockfile's. Every 6 hours it finds the
-newest stable Camphoric release (by version, once its image `ghcr.io/camphoric/camphoric:vX.Y.Z`
-is published), and the newest `@camphoric/camphoric-event-import-spec` and `-tools` versions
-within this event's ranges in `package.json`. When it hasn't tested that combination yet, it runs
-`ci.yml` and `e2e.yml` against exactly those versions; the run's summary lists them. A combination
-is tested once, pass or fail (a marker in the Actions cache records it). On Mondays at 14:00 UTC it
-tests regardless, which also catches drift no release causes, such as a new Chrome, and reports a
-release whose image was never published (a run without the image doesn't record the combination,
-so the first check after the image is published tests it).
+newest stable Camphoric release (by version) whose image `ghcr.io/camphoric/camphoric:vX.Y.Z` is
+published, and the newest `@camphoric/camphoric-event-import-spec` and `-tools` versions within
+this event's ranges in `package.json`. A release is created before its image is pushed, so until
+the newest release's image is published it tests the newest release before it that has one, and
+says so in the run's summary and notes. When it hasn't tested that combination yet, it runs
+`ci.yml` and `e2e.yml` against exactly those versions; the run's summary lists them.
+
+A combination is tested once, pass or fail: a marker in the Actions cache records it, keyed by
+the Camphoric release and package versions tested and by each package's newest version, in this
+event's range or not. So the first check after a newer release's image is published tests it, and
+a new major outside a range is tested, and reported, within 6 hours. When none of the five newest
+releases has a published image, the 6-hourly check waits.
+
+On Mondays at 14:00 UTC it tests regardless. That catches drift no release causes, such as a new
+Node 22 or runner image, or a new in-range version of a dependency that the smoke test installs
+from npm (Chromium doesn't change: it comes with the locked `@playwright/test`). With no image
+found, it tests the newest release anyway, so the missing image is reported, and it doesn't record
+the combination.
 
 A failure opens a **`camphoric-compat`** issue here, or comments on the open one, naming the
 versions tested; so does a note that a package has a version newer than this event's range
-allows (a new major, which this event needs migrating to), or that the release's image wasn't
-published. A report the issue already has isn't repeated, and a clean run closes it.
+allows (a new major, which this event needs migrating to), or that the newest release's image
+isn't published. A report the issue already has isn't repeated, and a clean run closes it.
 
 A fix pushed here runs CI against the lockfile, not the new versions, and the marker keeps the
 6-hourly check from retrying the failed combination. To test it again (and close the issue)
@@ -92,12 +102,24 @@ before Monday, run it with `force`:
 gh workflow run upstream.yml -f force=true
 ```
 
-To run CI or E2E by hand against a given image tag (a pre-release, say) or package versions:
+To run CI or E2E by hand against a given image tag (a pre-release, say) or exact package
+versions:
 
 ```bash
 gh workflow run e2e.yml -f image_tag=v0.15.0-rc.1
 gh workflow run e2e.yml -f spec_version=1.0.1 -f tools_version=1.2.1
 gh workflow run ci.yml -f spec_version=1.0.1 -f tools_version=1.2.1
+```
+
+A version outside this event's range works too, such as a new major or a pre-release
+(`-f tools_version=1.3.0-rc.1`): the run installs it over the range (with `--force` if a peer
+range makes npm refuse it), checks the installed package's own version, and marks it `invalid` in
+the summary's `npm ls`. It must be an exact version, not a range or a tag. CI's smoke test
+installs the packed package with the `spec_version` given (`tools_version` doesn't apply, since
+the package doesn't depend on the tools). To do the same locally:
+
+```bash
+SPEC_VERSION=1.0.0 scripts/smoke-test-package.sh
 ```
 
 GitHub disables scheduled workflows in a public repository after 60 days without activity; if
