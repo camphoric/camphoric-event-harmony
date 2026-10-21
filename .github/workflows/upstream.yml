@@ -1,0 +1,240 @@
+# Test this event against the newest Camphoric release (once its image is
+# published) and the newest import-spec / import-tools versions in its ranges:
+# once per new combination, weekly regardless, and on demand. It calls ci.yml
+# and e2e.yml with those exact versions, and reports in a camphoric-compat
+# issue: a failure or a note opens it (or adds to it), unless its latest report
+# says the same; a clean run closes it. See README.md.
+#
+# After a fix, run it with force to test again before Monday:
+#   gh workflow run upstream.yml -f force=true
+name: Camphoric releases
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'  # look for new versions
+    - cron: '0 14 * * 1'    # weekly: test even if nothing changed
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Test even if these versions were tested already
+        type: boolean
+        default: false
+
+concurrency:
+  group: upstream
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    outputs:
+      image_tag: ${{ steps.versions.outputs.image_tag }}
+      image_ready: ${{ steps.versions.outputs.image_ready }}
+      spec_version: ${{ steps.versions.outputs.spec_version }}
+      tools_version: ${{ steps.versions.outputs.tools_version }}
+      notes: ${{ steps.versions.outputs.notes }}
+      key: ${{ steps.versions.outputs.key }}
+      # Monday and forced runs always test (a missing image then fails e2e and
+      # is reported); a 6-hourly one waits for the image and skips a tested
+      # combination.
+      test: >-
+        ${{ github.event.schedule == '0 14 * * 1' || inputs.force
+        || (steps.versions.outputs.image_ready == 'true' && steps.tested.outputs.cache-hit != 'true') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Find the versions to test
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          spec_pkg=@camphoric/camphoric-event-import-spec
+          tools_pkg=@camphoric/camphoric-event-import-tools
+          # This event's range for package $1 (from package.json)
+          range() {
+            node -p "require('./package.json').devDependencies[process.argv[1]]
+              ?? (console.error(process.argv[1] + ' is not in devDependencies'), process.exit(1))" "$1"
+          }
+          # The highest published version of package $1 within range $2, or
+          # nothing. npm lists versions in publish order, so sort them by
+          # semver; a range such as '*' leaves out pre-releases.
+          newest() {
+            local versions
+            versions=$(npm view "$1" versions --json | jq -r 'if type == "array" then .[] else . end') || return
+            # semver -r prints the versions in the range, sorted, and fails when
+            # none is. (Unquoted: one version per word.)
+            # shellcheck disable=SC2086
+            npx --yes semver@7 -r "$2" $versions | tail -n 1 || true
+          }
+          # A note when package $1 has a version newer than the one tested ($2)
+          # outside this event's range ($3)
+          newer() {
+            local top
+            top=$(newest "$1" '*') || return
+            if [ -n "$top" ] && [ "$top" != "$2" ]; then
+              echo "- \`$1\` $top is published, outside this event's range (\`$3\`): this event needs migrating to it."
+            fi
+          }
+
+          # The newest stable app release by version, not gh release view's
+          # Latest (a package release is briefly Latest, and the API doesn't
+          # list releases strictly by version)
+          tags=$(gh api --paginate repos/camphoric/camphoric/releases \
+            --jq '.[] | select((.prerelease or .draft) | not) | .tag_name')
+          image=$(echo "$tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          spec_range=$(range "$spec_pkg")
+          tools_range=$(range "$tools_pkg")
+          spec=$(newest "$spec_pkg" "$spec_range")
+          tools=$(newest "$tools_pkg" "$tools_range")
+          if [ -z "$image" ] || [ -z "$spec" ] || [ -z "$tools" ]; then
+            echo "couldn't find the versions to test (image '$image', spec '$spec', tools '$tools')" >&2
+            exit 1
+          fi
+          spec_note=$(newer "$spec_pkg" "$spec" "$spec_range")
+          tools_note=$(newer "$tools_pkg" "$tools" "$tools_range")
+          notes=$(printf '%s\n%s\n' "$spec_note" "$tools_note" | grep . || true)
+
+          # The release is created before its image is pushed
+          if docker manifest inspect "ghcr.io/camphoric/camphoric:$image" > /dev/null 2>&1; then
+            ready=true
+          else
+            ready=false
+          fi
+          {
+            echo '### Versions'
+            echo
+            if [ "$ready" = true ]; then
+              echo "- Camphoric \`$image\`"
+            else
+              echo "- Camphoric \`$image\`: ghcr.io/camphoric/camphoric:$image isn't published yet"
+            fi
+            echo "- \`$spec_pkg\` $spec (range \`$spec_range\`)"
+            echo "- \`$tools_pkg\` $tools (range \`$tools_range\`)"
+            if [ -n "$notes" ]; then echo; echo "$notes"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "image_tag=$image"
+            echo "image_ready=$ready"
+            echo "spec_version=$spec"
+            echo "tools_version=$tools"
+            echo "key=camphoric-tested-$image-spec-$spec-tools-$tools"
+            echo "notes<<NOTES_EOF"
+            if [ -n "$notes" ]; then echo "$notes"; fi
+            echo "NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Already tested?
+        id: tested
+        uses: actions/cache/restore@v6
+        with:
+          path: .camphoric-tested
+          key: ${{ steps.versions.outputs.key }}
+          lookup-only: true
+
+  ci:
+    needs: detect
+    if: ${{ needs.detect.outputs.test == 'true' }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      spec_version: ${{ needs.detect.outputs.spec_version }}
+      tools_version: ${{ needs.detect.outputs.tools_version }}
+
+  e2e:
+    needs: detect
+    if: ${{ needs.detect.outputs.test == 'true' }}
+    uses: ./.github/workflows/e2e.yml
+    with:
+      image_tag: ${{ needs.detect.outputs.image_tag }}
+      spec_version: ${{ needs.detect.outputs.spec_version }}
+      tools_version: ${{ needs.detect.outputs.tools_version }}
+
+  record:
+    needs: [detect, ci, e2e]
+    if: ${{ !cancelled() && needs.detect.outputs.test == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # One open camphoric-compat issue at a time: a failure or a note adds to
+      # it (or opens it), unless its latest report says the same; a clean run
+      # closes it.
+      - name: Report in a camphoric-compat issue
+        env:
+          CI_RESULT: ${{ needs.ci.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          IMAGE: ${{ needs.detect.outputs.image_tag }}
+          IMAGE_READY: ${{ needs.detect.outputs.image_ready }}
+          SPEC: ${{ needs.detect.outputs.spec_version }}
+          TOOLS: ${{ needs.detect.outputs.tools_version }}
+          NOTES: ${{ needs.detect.outputs.notes }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          versions="Camphoric \`$IMAGE\`, import-spec $SPEC and import-tools $TOOLS"
+          {
+            if [ "$IMAGE_READY" != true ]; then
+              echo "- ghcr.io/camphoric/camphoric:$IMAGE isn't published, so e2e can't run against it."
+            fi
+            if [ -n "$NOTES" ]; then echo "$NOTES"; fi
+          } > "$RUNNER_TEMP/notes.md"
+          open=$(gh issue list --label camphoric-compat --state open --json number --jq '.[0].number // empty')
+          if [ "$CI_RESULT" = success ] && [ "$E2E_RESULT" = success ] && [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+            if [ -n "$open" ]; then
+              gh issue close "$open" --comment "This event passes again with $versions: $RUN"
+            fi
+            exit 0
+          fi
+          # The same versions, results and notes as the issue's latest report:
+          # nothing new
+          fingerprint=$( { echo "$IMAGE $SPEC $TOOLS ci=$CI_RESULT e2e=$E2E_RESULT"; cat "$RUNNER_TEMP/notes.md"; } | sha256sum | cut -c1-16)
+          {
+            if [ "$CI_RESULT" != success ] || [ "$E2E_RESULT" != success ]; then
+              echo "This event fails with $versions: CI ${CI_RESULT}, E2E ${E2E_RESULT}. See [the run]($RUN)."
+            else
+              echo "This event passes with $versions ([the run]($RUN)), with notes:"
+            fi
+            if [ -s "$RUNNER_TEMP/notes.md" ]; then echo; cat "$RUNNER_TEMP/notes.md"; fi
+            echo
+            echo "<!-- camphoric-compat: $fingerprint -->"
+          } > "$RUNNER_TEMP/report.md"
+          if [ -n "$open" ]; then
+            latest=$(gh issue view "$open" --json body,comments \
+              --jq '([.body] + [.comments[].body]) | map(select(contains("<!-- camphoric-compat:"))) | last // ""')
+            if echo "$latest" | grep -qF "<!-- camphoric-compat: $fingerprint -->"; then
+              echo "issue #$open already reports this"
+              exit 0
+            fi
+            gh issue comment "$open" --body-file "$RUNNER_TEMP/report.md"
+          else
+            gh label create camphoric-compat --color d93f0b \
+              --description 'The newest Camphoric release or import packages and this event disagree' 2>/dev/null || true
+            gh issue create --title 'The newest Camphoric releases need attention' \
+              --label camphoric-compat --body-file "$RUNNER_TEMP/report.md"
+          fi
+
+      # Pass or fail, the combination is tested: a failure is tracked by the
+      # issue, not retried every 6 hours. Saved after the report, so a report
+      # that failed is tried again by the next check, and not when the image
+      # wasn't published (a Monday or forced run), so the first check after it
+      # is published tests it. (On a Monday or forced run the key may exist
+      # already, which only logs a warning.)
+      - if: ${{ needs.detect.outputs.image_ready == 'true' }}
+        run: touch .camphoric-tested
+
+      - name: Mark these versions tested
+        if: ${{ needs.detect.outputs.image_ready == 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: .camphoric-tested
+          key: ${{ needs.detect.outputs.key }}

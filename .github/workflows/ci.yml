@@ -1,5 +1,7 @@
 # Type-check, test (including the spec's conformance checks), lint, and
-# smoke-test the package as it's published, on every push to main and PR.
+# smoke-test the package as it's published, on every push to main and PR. It
+# also runs on demand, and from upstream.yml, where it can pick exact
+# import-spec / import-tools versions instead of the lockfile's.
 name: CI
 
 on:
@@ -7,9 +9,32 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
+    inputs:
+      spec_version:
+        description: The @camphoric/camphoric-event-import-spec version to test (default the lockfile's)
+        type: string
+        default: ''
+      tools_version:
+        description: The @camphoric/camphoric-event-import-tools version to test (default the lockfile's)
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      spec_version:
+        description: The @camphoric/camphoric-event-import-spec version to test (default the lockfile's)
+        type: string
+        default: ''
+      tools_version:
+        description: The @camphoric/camphoric-event-import-tools version to test (default the lockfile's)
+        type: string
+        default: ''
 
+# A literal prefix: called from upstream.yml, github.workflow is the caller's
+# name, which e2e.yml would share. Pushes and PRs queue per ref (a new push to
+# a PR cancels its superseded run); every other run gets its own group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ (github.event_name == 'push' || github.event_name == 'pull_request') && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -27,6 +52,24 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Use the requested Camphoric package versions
+        if: ${{ inputs.spec_version || inputs.tools_version }}
+        env:
+          SPEC: ${{ inputs.spec_version }}
+          TOOLS: ${{ inputs.tools_version }}
+        run: |
+          packages=()
+          if [ -n "$SPEC" ]; then packages+=("@camphoric/camphoric-event-import-spec@$SPEC"); fi
+          if [ -n "$TOOLS" ]; then packages+=("@camphoric/camphoric-event-import-tools@$TOOLS"); fi
+          npm install --no-save "${packages[@]}"
+          npm ls "${packages[@]}"   # fails unless exactly these versions are installed
+          {
+            echo '### Camphoric packages'
+            echo '```'
+            npm ls @camphoric/camphoric-event-import-spec @camphoric/camphoric-event-import-tools
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Type-check
         run: npm run typecheck

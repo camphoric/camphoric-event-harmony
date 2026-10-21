@@ -1,23 +1,48 @@
 # The registration form's end-to-end tests: a throwaway Camphoric (the release
 # image, latest unless a run picks another tag) with this event imported, and
-# the form driven in desktop and mobile Chrome. On PRs, weekly (so a Camphoric
-# release that changes the form shows up here), and on demand.
+# the form driven in desktop and mobile Chrome. On PRs, on demand, and from
+# upstream.yml (which runs them when a Camphoric or import-package release
+# comes out, and weekly), where a run can pick the image tag and exact
+# import-spec / import-tools versions instead of the lockfile's.
 name: E2E
 
 on:
   pull_request:
     branches: [main]
-  schedule:
-    - cron: '0 14 * * 1'
+  workflow_call:
+    inputs:
+      image_tag:
+        description: The Camphoric image tag to test against (ghcr.io/camphoric/camphoric)
+        type: string
+        default: latest
+      spec_version:
+        description: The @camphoric/camphoric-event-import-spec version to test (default the lockfile's)
+        type: string
+        default: ''
+      tools_version:
+        description: The @camphoric/camphoric-event-import-tools version to test (default the lockfile's)
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       image_tag:
         description: The Camphoric image tag to test against (ghcr.io/camphoric/camphoric)
         default: latest
         type: string
+      spec_version:
+        description: The @camphoric/camphoric-event-import-spec version to test (default the lockfile's)
+        type: string
+        default: ''
+      tools_version:
+        description: The @camphoric/camphoric-event-import-tools version to test (default the lockfile's)
+        type: string
+        default: ''
 
+# A literal prefix: called from upstream.yml, github.workflow is the caller's
+# name, which ci.yml would share. PRs queue per ref (a new push cancels the
+# superseded run); every other run gets its own group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: e2e-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -38,6 +63,24 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Use the requested Camphoric package versions
+        if: ${{ inputs.spec_version || inputs.tools_version }}
+        env:
+          SPEC: ${{ inputs.spec_version }}
+          TOOLS: ${{ inputs.tools_version }}
+        run: |
+          packages=()
+          if [ -n "$SPEC" ]; then packages+=("@camphoric/camphoric-event-import-spec@$SPEC"); fi
+          if [ -n "$TOOLS" ]; then packages+=("@camphoric/camphoric-event-import-tools@$TOOLS"); fi
+          npm install --no-save "${packages[@]}"
+          npm ls "${packages[@]}"   # fails unless exactly these versions are installed
+          {
+            echo '### Camphoric packages'
+            echo '```'
+            npm ls @camphoric/camphoric-event-import-spec @camphoric/camphoric-event-import-tools
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
