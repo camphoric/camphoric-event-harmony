@@ -85,9 +85,10 @@ releases has a published image, the 6-hourly check waits.
 
 On Mondays at 14:00 UTC it tests regardless. That catches drift no release causes, such as a new
 Node 22 or runner image, or a new in-range version of a dependency that the smoke test installs
-from npm (Chromium doesn't change: it comes with the locked `@playwright/test`). With no image
-found, it tests the newest release anyway, so the missing image is reported, and it doesn't record
-the combination.
+from npm. Chromium comes with `@playwright/test`: the lockfile's, unless the import-tools version
+tested needs a newer one, when npm installs the newest its peer range allows, so a new Playwright
+release changes it too. With no image found, it tests the newest release anyway, so the missing
+image is reported, and it doesn't record the combination.
 
 A failure opens a **`camphoric-compat`** issue here, or comments on the open one, naming the
 versions tested; so does a note that a package has a version newer than this event's range
