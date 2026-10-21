@@ -151,9 +151,11 @@ jobs:
           # The newest release's image is pushed soon after the release; a day
           # on, it isn't coming (the release's build-image job failed). The
           # wording changes once, at 24 hours, and carries no ages, since the
-          # issue's report fingerprint covers the notes.
+          # issue's report fingerprint covers the notes. A day on, the key
+          # names the release too, so the 6-hourly check reports it.
           image_note=
           image_line="- Camphoric \`$image\`"
+          never=
           if [ "$ready" != true ] || [ "$image" != "$newest_release" ]; then
             published_at=$(echo "$listed" | awk -v tag="$newest_release" '$1 == tag { print $2; exit }')
             if ! age=$(jq -nr --arg at "$published_at" '$at | now - fromdateiso8601 | floor'); then
@@ -167,8 +169,10 @@ jobs:
               fi
             else
               missing="was never published (the release's \`build-image\` job probably failed)"
+              never=-never-published-$newest_release
+              image_note="- Camphoric \`$newest_release\` was released over a day ago, but ghcr.io/camphoric/camphoric:$newest_release was never published: the release's \`build-image\` job probably failed and needs re-running (or run \`gh workflow run release-image.yml -R camphoric/camphoric -f tag=$newest_release\`)."
               if [ "$ready" = true ]; then
-                image_note="- Camphoric \`$newest_release\` was released over a day ago, but ghcr.io/camphoric/camphoric:$newest_release was never published: the release's \`build-image\` job probably failed and needs re-running (or run \`gh workflow run release-image.yml -R camphoric/camphoric -f tag=$newest_release\`). This run tests \`$image\`, the newest release whose image is."
+                image_note="$image_note This run tests \`$image\`, the newest release whose image is."
               fi
             fi
             if [ "$ready" != true ]; then
@@ -195,8 +199,9 @@ jobs:
             echo "spec_version=$spec"
             echo "tools_version=$tools"
             # The versions tested, and the newest of each package: a new
-            # version outside this event's range is a new note, so a new key
-            echo "key=camphoric-tested-$image-spec-$spec-tools-$tools-newest-spec-$spec_top-tools-$tools_top"
+            # version outside this event's range is a new note, so a new key;
+            # likewise a newer release whose image was never published
+            echo "key=camphoric-tested-$image-spec-$spec-tools-$tools-newest-spec-$spec_top-tools-$tools_top$never"
             echo "notes<<NOTES_EOF"
             if [ -n "$notes" ]; then echo "$notes"; fi
             echo "NOTES_EOF"
