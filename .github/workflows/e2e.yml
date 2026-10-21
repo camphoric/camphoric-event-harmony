@@ -81,6 +81,7 @@ jobs:
           }
           # Check each installed package's own version: npm ls fails on one
           # outside this event's range, though it's installed
+          requested=()
           for package in "${packages[@]}"; do
             name=${package%@*}
             want=${package##*@}
@@ -91,14 +92,46 @@ jobs:
               echo "::error::$name $have is installed, not $want (give an exact version)"
               exit 1
             fi
+            requested+=("$name")
           done
+          # The requested versions can move other packages through their peer
+          # ranges (import-tools 1.2.1 needs @playwright/test ^1.64.1, which
+          # brings a newer Chromium): list each top-level package whose
+          # installed version isn't the one package-lock.json pins
+          moved=$(node -e '
+            const fs = require("fs");
+            const pkg = require("./package.json");
+            const locked = require("./package-lock.json").packages;
+            const requested = new Set(process.argv.slice(1));
+            const fields = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
+            const names = [...new Set(fields.flatMap((field) => Object.keys(pkg[field] ?? {})))].sort();
+            for (const name of names) {
+              const pinned = locked["node_modules/" + name]?.version ?? "none";
+              let installed = "none";
+              try {
+                installed = JSON.parse(fs.readFileSync("node_modules/" + name + "/package.json", "utf8")).version;
+              } catch {}
+              if (installed !== pinned) {
+                const why = requested.has(name) ? "requested" : "moved by the requested versions";
+                console.log(`- \`${name}\` ${pinned} → ${installed} (${why})`);
+              }
+            }
+          ' "${requested[@]}")
           {
-            echo '### Camphoric packages'
+            echo '### Installed packages'
             echo
-            echo '(`invalid` marks a version outside the range in `package.json`.)'
+            if [ -n "$moved" ]; then
+              echo 'Not the versions `package-lock.json` pins:'
+              echo
+              echo "$moved"
+            else
+              echo 'Every top-level package is at the version `package-lock.json` pins.'
+            fi
+            echo
+            echo "This event's top-level packages as installed (\`invalid\` marks a version outside the range in \`package.json\`):"
             echo
             echo '```'
-            npm ls @camphoric/camphoric-event-import-spec @camphoric/camphoric-event-import-tools || true
+            npm ls --depth=0 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
