@@ -74,8 +74,12 @@ newest stable Camphoric release (by version) whose image `ghcr.io/camphoric/camp
 published, and the newest `@camphoric/camphoric-event-import-spec` and `-tools` versions within
 this event's ranges in `package.json`. A release is created before its image is pushed, so until
 the newest release's image is published it tests the newest release before it that has one, and
-says so in the run's summary and notes. When it hasn't tested that combination yet, it runs
-`ci.yml` and `e2e.yml` against exactly those versions; the run's summary lists them.
+says so in the run's summary and notes. Once the release is a day old, the note says instead that
+its image was never published and that the release's `build-image` job needs re-running. It looks
+each image up in GHCR's registry API, with retries: an answer other than found or not found (an
+outage, say) fails the run, rather than counting as a missing image. When it hasn't tested that
+combination yet, it runs `ci.yml` and `e2e.yml` against exactly those versions; the run's summary
+lists them.
 
 A combination is tested once, pass or fail: a marker in the Actions cache records it, keyed by
 the Camphoric release and package versions tested and by each package's newest version, in this
@@ -87,13 +91,17 @@ On Mondays at 14:00 UTC it tests regardless. That catches drift no release cause
 Node 22 or runner image, or a new in-range version of a dependency that the smoke test installs
 from npm. Chromium comes with `@playwright/test`: the lockfile's, unless the import-tools version
 tested needs a newer one, when npm installs the newest its peer range allows, so a new Playwright
-release changes it too. With no image found, it tests the newest release anyway, so the missing
-image is reported, and it doesn't record the combination.
+release changes it too. The CI and E2E summaries list this event's top-level packages as
+installed, and name each whose version isn't the one `package-lock.json` pins: the requested
+packages, and any they moved, such as `@playwright/test`. With no image found, it tests the newest
+release anyway, so the missing image is reported, and it doesn't record the combination.
 
 A failure opens a **`camphoric-compat`** issue here, or comments on the open one, naming the
 versions tested; so does a note that a package has a version newer than this event's range
 allows (a new major, which this event needs migrating to), or that the newest release's image
-isn't published. A report the issue already has isn't repeated, and a clean run closes it.
+isn't published. A report the issue already has isn't repeated, and a clean run closes it. A
+note's wording is fixed (a missing image's changes once, when its release is a day old), so the
+same note isn't reported again on each run.
 
 A fix pushed here runs CI against the lockfile, not the new versions, and the marker keeps the
 6-hourly check from retrying the failed combination. To test it again (and close the issue)

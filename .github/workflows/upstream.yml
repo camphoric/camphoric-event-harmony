@@ -83,12 +83,47 @@ jobs:
             fi
           }
 
-          # Stable app releases by version, newest first, not gh release
-          # view's Latest (a package release is briefly Latest, and the API
-          # doesn't list releases strictly by version)
-          tags=$(gh api --paginate repos/camphoric/camphoric/releases \
-            --jq '.[] | select((.prerelease or .draft) | not) | .tag_name')
-          releases=$(echo "$tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV || true)
+          # Whether ghcr.io/camphoric/camphoric:$1 is published: succeeds when
+          # GHCR answers 200, fails when it answers 404. Any other answer (an
+          # outage, a rate limit), after retries, fails the step rather than
+          # counting as not published. GHCR answers 404, not 406, for a
+          # manifest type the request doesn't accept, so it accepts all four.
+          registry=https://ghcr.io
+          published() {
+            local attempt token status answer
+            for attempt in 1 2 3 4; do
+              if [ "$attempt" -gt 1 ]; then sleep $((attempt * 5)); fi
+              if ! token=$(curl -sS --fail --max-time 30 \
+                  "$registry/token?scope=repository:camphoric/camphoric:pull" | jq -er .token); then
+                answer="no anonymous token from $registry/token"
+              else
+                status=$(curl -sS --head --output /dev/null --write-out '%{http_code}' --max-time 30 \
+                  -H "Authorization: Bearer $token" \
+                  -H 'Accept: application/vnd.oci.image.index.v1+json' \
+                  -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+                  -H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json' \
+                  -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
+                  "$registry/v2/camphoric/camphoric/manifests/$1") || true
+                case $status in
+                  200) return 0 ;;
+                  404) return 1 ;;
+                  000 | '') answer="no answer from $registry" ;;
+                  *) answer="HTTP $status from $registry" ;;
+                esac
+              fi
+              echo "looking up ghcr.io/camphoric/camphoric:$1 (try $attempt of 4): $answer" >&2
+            done
+            echo "::error::couldn't tell whether ghcr.io/camphoric/camphoric:$1 is published after 4 tries (wanted 200 or 404): $answer"
+            exit 1
+          }
+
+          # Stable app releases (each with its publish time) by version, newest
+          # first, not gh release view's Latest (a package release is briefly
+          # Latest, and the API doesn't list releases strictly by version)
+          listed=$(gh api --paginate repos/camphoric/camphoric/releases \
+            --jq '.[] | select((.prerelease or .draft) | not) | "\(.tag_name) \(.published_at)"')
+          listed=$(echo "$listed" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+ ' | sort -rV || true)
+          releases=$(echo "$listed" | cut -d ' ' -f 1)
           newest_release=$(echo "$releases" | head -n 1)
           # A release is created before its image is pushed: test the newest
           # release whose image is published, of the five newest. With none,
@@ -96,7 +131,7 @@ jobs:
           image=$newest_release
           ready=false
           for tag in $(echo "$releases" | head -n 5); do
-            if docker manifest inspect "ghcr.io/camphoric/camphoric:$tag" > /dev/null 2>&1; then
+            if published "$tag"; then
               image=$tag
               ready=true
               break
@@ -113,9 +148,34 @@ jobs:
             echo "couldn't find the versions to test (image '$image', spec '$spec', tools '$tools')" >&2
             exit 1
           fi
+          # The newest release's image is pushed soon after the release; a day
+          # on, it isn't coming (the release's build-image job failed). The
+          # wording changes once, at 24 hours, and carries no ages, since the
+          # issue's report fingerprint covers the notes.
           image_note=
-          if [ "$image" != "$newest_release" ] && [ "$ready" = true ]; then
-            image_note="- Camphoric \`$newest_release\` is released, but ghcr.io/camphoric/camphoric:$newest_release isn't published yet: this run tests \`$image\`, the newest release whose image is."
+          image_line="- Camphoric \`$image\`"
+          if [ "$ready" != true ] || [ "$image" != "$newest_release" ]; then
+            published_at=$(echo "$listed" | awk -v tag="$newest_release" '$1 == tag { print $2; exit }')
+            if ! age=$(jq -nr --arg at "$published_at" '$at | now - fromdateiso8601 | floor'); then
+              echo "couldn't read when $newest_release was published ('$published_at')" >&2
+              exit 1
+            fi
+            if [ "$age" -lt 86400 ]; then
+              missing="isn't published yet"
+              if [ "$ready" = true ]; then
+                image_note="- Camphoric \`$newest_release\` is released, but ghcr.io/camphoric/camphoric:$newest_release isn't published yet: this run tests \`$image\`, the newest release whose image is."
+              fi
+            else
+              missing="was never published (the release's \`build-image\` job probably failed)"
+              if [ "$ready" = true ]; then
+                image_note="- Camphoric \`$newest_release\` was released over a day ago, but ghcr.io/camphoric/camphoric:$newest_release was never published: the release's \`build-image\` job probably failed and needs re-running (or run \`gh workflow run release-image.yml -R camphoric/camphoric -f tag=$newest_release\`). This run tests \`$image\`, the newest release whose image is."
+              fi
+            fi
+            if [ "$ready" != true ]; then
+              image_line="- Camphoric \`$image\`: ghcr.io/camphoric/camphoric:$image $missing"
+            else
+              image_line="- Camphoric \`$image\`, the newest release with a published image: \`$newest_release\`'s $missing"
+            fi
           fi
           spec_note=$(newer "$spec_pkg" "$spec" "$spec_top" "$spec_range")
           tools_note=$(newer "$tools_pkg" "$tools" "$tools_top" "$tools_range")
@@ -124,13 +184,7 @@ jobs:
           {
             echo '### Versions'
             echo
-            if [ "$ready" != true ]; then
-              echo "- Camphoric \`$image\`: ghcr.io/camphoric/camphoric:$image isn't published yet"
-            elif [ "$image" != "$newest_release" ]; then
-              echo "- Camphoric \`$image\` (the newest release with a published image; \`$newest_release\`'s isn't yet)"
-            else
-              echo "- Camphoric \`$image\`"
-            fi
+            echo "$image_line"
             echo "- \`$spec_pkg\` $spec (range \`$spec_range\`)"
             echo "- \`$tools_pkg\` $tools (range \`$tools_range\`)"
             if [ -n "$notes" ]; then echo; echo "$notes"; fi
