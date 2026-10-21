@@ -73,6 +73,8 @@ jobs:
           for package in "${packages[@]}"; do
             name=${package%@*}
             want=${package##*@}
+            want=${want#=}
+            want=${want#v}   # npm takes =1.2.1 and v1.2.1 as 1.2.1
             have=$(node -p "require('./node_modules/' + process.argv[1] + '/package.json').version" "$name")
             if [ "$have" != "$want" ]; then
               echo "::error::$name $have is installed, not $want (give an exact version)"

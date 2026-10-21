@@ -42,7 +42,9 @@ if [ -n "${SPEC_VERSION:-}" ]; then
     npm install --no-audit --no-fund --force "$TARBALL" "$SPEC@$SPEC_VERSION"
   }
   INSTALLED=$(node -p "require('./node_modules/$SPEC/package.json').version")
-  if [ "$INSTALLED" != "$SPEC_VERSION" ]; then
+  WANT=${SPEC_VERSION#=}
+  WANT=${WANT#v}   # npm takes =1.0.0 and v1.0.0 as 1.0.0
+  if [ "$INSTALLED" != "$WANT" ]; then
     echo "$SPEC $INSTALLED is installed, not $SPEC_VERSION (give an exact version)" >&2
     exit 1
   fi
