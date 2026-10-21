@@ -84,10 +84,10 @@ lists them.
 A combination is tested once, pass or fail: a marker in the Actions cache records it, keyed by
 the Camphoric release and package versions tested, by each package's newest version, in this
 event's range or not, and by a newer release whose image is still missing a day after its release.
-So the first check after a newer release's image is published tests it, a new major outside a
-range is tested, and reported, within 6 hours, and so is an image that was never published (one
-still under a day old is reported only by a Monday or forced run). When none of the five newest
-releases has a published image, the 6-hourly check waits.
+So the first check after a newer release's image is published tests it, and a new major outside a
+range is tested, and reported, within 6 hours. A newer release's missing image is reported within
+6 hours of the release turning a day old; before that, usually only by a Monday or forced run.
+When none of the five newest releases has a published image, the 6-hourly check waits.
 
 On Mondays at 14:00 UTC it tests regardless. That catches drift no release causes, such as a new
 Node 22 or runner image, or a new in-range version of a dependency that the smoke test installs
