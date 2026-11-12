@@ -29,18 +29,20 @@
  *                seeds never share one.
  *   PAID_SHARE        share recorded as paid in full (default 0.5)
  *   PART_PAID_SHARE   share recorded as part paid (default 0.2)
- *   CAMPHORIC_URL                 server to post to (default http://django:8000)
- *   DJANGO_SUPERUSER_USERNAME,
- *   DJANGO_SUPERUSER_PASSWORD     an admin login, to look the event up
- *                                 (prompted for when neither is set)
+ *   CAMPHORIC_URL         server to post to (default http://django:8000)
+ *   CAMPHORIC_API_TOKEN   an Admin's personal access token (cmph_…), to look
+ *                         the event up and record payments. Mint one on the
+ *                         server with `manage.py camphoric_api_token create
+ *                         <user>`; it lasts an hour.
  *
  * Running it
  * ----------
  * From this repository, against a development Camphoric on port 8000 (its dev
- * admin login is admin/admin):
+ * admin is admin), from Camphoric's checkout for the token:
  *
  *   CAMPHORIC_URL=http://localhost:8000 \
- *     DJANGO_SUPERUSER_USERNAME=admin DJANGO_SUPERUSER_PASSWORD=admin \
+ *     CAMPHORIC_API_TOKEN=$(docker compose -f ../camphoric/docker-compose.yml \
+ *       exec -T django ./manage.py camphoric_api_token create admin) \
  *     COUNT=75 SEED=42 npm run bulk
  *
  * The shared plumbing is in @camphoric/camphoric-event-import-tools/bulk-registrations.
