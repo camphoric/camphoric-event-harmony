@@ -27,10 +27,16 @@ one copy of it for every event; a spec major this event doesn't follow fails to 
 nesting a second copy. Camphoric's `RELEASE.md` ("What a spec version means") describes how a new
 spec major is rolled out.
 
-To add generated registrations to an event imported into a running Camphoric:
+To add generated registrations to an event imported into a running Camphoric, with an Admin's
+personal access token (here minted in Camphoric's development stack, beside this checkout; it
+lasts an hour):
 
 ```bash
-CAMPHORIC_URL=http://localhost:8000 DJANGO_SUPERUSER_USERNAME=admin DJANGO_SUPERUSER_PASSWORD=admin COUNT=10 npm run bulk
+export CAMPHORIC_API_TOKEN=$(docker compose -f ../camphoric/docker-compose.yml exec -T django ./manage.py camphoric_api_token create admin)
+```
+
+```bash
+CAMPHORIC_URL=http://localhost:8000 COUNT=10 npm run bulk
 ```
 
 (`addRegistrations.ts` describes its other settings. Each completed registration queues a
@@ -52,9 +58,11 @@ Locally the results are listed in the terminal; `npm run e2e -- --reporter=html`
 playwright show-report`, gives the HTML report (with traces) that CI uploads.
 
 - `CAMPHORIC_IMAGE_TAG` picks the release image's tag (default `latest`, pulled fresh);
-  `CAMPHORIC_E2E_IMAGE` names a locally built image instead.
-- `CAMPHORIC_E2E_SERVER_URL`, with `CAMPHORIC_E2E_SERVER_USERNAME` / `_PASSWORD`, imports into
-  a running server instead of starting one.
+  `CAMPHORIC_E2E_IMAGE` names a locally built image instead. The harness (import-tools 3) imports
+  with a personal access token it mints in the server, so the image must be Camphoric v0.18.0 or
+  later.
+- `CAMPHORIC_E2E_SERVER_URL`, with `CAMPHORIC_E2E_SERVER_TOKEN` (an Admin's personal access
+  token), imports into a running server instead of starting one.
 - Every test, on desktop and mobile Chrome, shares the one imported event, so a registration one
   test completes stays.
 - The rates are early or regular depending on the day, so the price tests compare totals (one
@@ -114,16 +122,17 @@ gh workflow run upstream.yml -f force=true
 ```
 
 To run CI or E2E by hand against a given image tag (a pre-release, say) or exact package
-versions:
+versions (an image of v0.18.0 or later, and import-tools 3.x: the harness mints an API token in
+the server, and earlier versions sign in with a password v0.18.0 refuses):
 
 ```bash
-gh workflow run e2e.yml -f image_tag=v0.15.0-rc.1
-gh workflow run e2e.yml -f spec_version=1.0.1 -f tools_version=1.2.1
-gh workflow run ci.yml -f spec_version=1.0.1 -f tools_version=1.2.1
+gh workflow run e2e.yml -f image_tag=v0.19.0-rc.1
+gh workflow run e2e.yml -f spec_version=1.2.0 -f tools_version=3.0.0
+gh workflow run ci.yml -f spec_version=1.2.0 -f tools_version=3.0.0
 ```
 
 A version outside this event's range works too, such as a new major or a pre-release
-(`-f tools_version=1.3.0-rc.1`): the run installs it over the range (with `--force` if a peer
+(`-f tools_version=4.0.0-rc.1`): the run installs it over the range (with `--force` if a peer
 range makes npm refuse it), checks the installed package's own version, and marks it `invalid` in
 the summary's `npm ls`. It must be an exact version, not a range or a tag. CI's smoke test
 installs the packed package with the `spec_version` given (`tools_version` doesn't apply, since
