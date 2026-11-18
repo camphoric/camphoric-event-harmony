@@ -81,7 +81,9 @@ playwright show-report`, gives the HTML report (with traces) that CI uploads.
   Camphoric client changes the harness, not these tests.
 
 `.github/workflows/e2e.yml` runs them on pull requests, from `upstream.yml` (below), and on
-demand.
+demand. It runs Chromium from Playwright's Docker image, at the installed `@playwright/test`'s
+version (`.github/actions/playwright-browsers`, as Camphoric's own e2e jobs do), rather than
+installing it and its system packages on the runner, which a slow Ubuntu mirror could stall.
 
 ## Testing against new Camphoric releases
 

@@ -135,8 +135,12 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      # Chromium for the config's Desktop and Mobile Chrome projects, from
+      # Playwright's image, beside the throwaway Camphoric on the runner's
+      # network. After the package versions are set, so it's their Playwright.
+      - uses: ./.github/actions/playwright-browsers
+        with:
+          working-directory: .
 
       - name: Run the e2e tests
         run: npm run e2e
