@@ -7,8 +7,17 @@ imported event.
 
 It satisfies the contract in
 [`@camphoric/camphoric-event-import-spec`](https://github.com/camphoric/camphoric/tree/main/data/packages/event-import-spec),
-and Camphoric's importer (`data/` in the Camphoric repository) installs it from npm and
-imports it.
+and Camphoric's importer (`data/` in the Camphoric repository) imports it once it's installed
+there. Since Camphoric v0.19.0 the importer no longer installs camps' events itself, so install
+it by hand in Camphoric's `data/` (it stays until the next `npm ci` or `npm install` there;
+Camphoric's `doc/development.md` has the Docker stack's command):
+
+```bash
+npm install --no-save @camphoric/camphoric-event-harmony
+```
+
+Camphoric's own CI no longer tests this event either, so `upstream.yml` (below) is what checks it
+against new Camphoric releases.
 
 ## Developing
 
@@ -126,9 +135,9 @@ versions (an image of v0.18.0 or later, and import-tools 3.x: the harness mints 
 the server, and earlier versions sign in with a password v0.18.0 refuses):
 
 ```bash
-gh workflow run e2e.yml -f image_tag=v0.19.0-rc.1
-gh workflow run e2e.yml -f spec_version=1.2.0 -f tools_version=3.0.0
-gh workflow run ci.yml -f spec_version=1.2.0 -f tools_version=3.0.0
+gh workflow run e2e.yml -f image_tag=v0.20.0-rc.1
+gh workflow run e2e.yml -f spec_version=1.3.0 -f tools_version=3.0.0
+gh workflow run ci.yml -f spec_version=1.3.0 -f tools_version=3.0.0
 ```
 
 A version outside this event's range works too, such as a new major or a pre-release
